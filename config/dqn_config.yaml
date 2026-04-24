@@ -1,0 +1,37 @@
+agent:
+  state_dim: 10
+  action_dim: 6
+  lr: 0.0005
+  gamma: 0.99
+  epsilon_start: 1.0
+  epsilon_end: 0.05
+  epsilon_decay: 0.9995
+  batch_size: 64
+  memory_size: 50000
+  target_update_freq: 500
+  hidden_sizes: [256, 256]
+
+training:
+  max_episodes: 3000
+  max_steps_per_episode: 500
+  save_every: 100
+  checkpoint_dir: "models/"
+
+reward:
+  step_dist_penalty: -0.1
+  heading_bonus: 0.5
+  proximity_bonus: 2.0
+  terminal_reward: 100.0
+  vision_penalty: -1.0
+
+evader:
+  speeds:
+    static: 0.0
+    slow: 0.5
+    fast: 1.5
+  direction_change_interval: 2.0
+
+drone:
+  velocity_magnitude: 1.0
+  intercept_threshold: 0.5
+  boundary_radius: 12.0
