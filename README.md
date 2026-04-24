@@ -13,7 +13,6 @@ This project trains an Iris quadrotor (chaser) to autonomously intercept a red C
 
 ## System Requirements
 
-- Ubuntu 24.04, ROS 2 Jazzy, Gazebo Harmonic 8.11
 - ArduPilot SITL (ArduCopter V4.8.0), MAVROS2
 - PyTorch 2.5.1 + CUDA, OpenCV 4.13
 
