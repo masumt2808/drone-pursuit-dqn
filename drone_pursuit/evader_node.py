@@ -44,7 +44,8 @@ class EvaderNode(Node):
     def _reset_cb(self, request, response):
         self.pos = self.start_pos.copy()
         self.vel = np.zeros(3)
-        self._change_direction()
+        if self.speed > 0.0:
+            self._change_direction()
         self._move_gazebo_model()
         response.success = True
         response.message = f'Reset to {self.start_pos}'

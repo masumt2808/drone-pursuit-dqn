@@ -5,7 +5,7 @@ agent:
   gamma: 0.99
   epsilon_start: 1.0
   epsilon_end: 0.05
-  epsilon_decay: 0.9995
+  epsilon_decay: 0.9998
   batch_size: 64
   memory_size: 50000
   target_update_freq: 500
@@ -13,14 +13,15 @@ agent:
 
 training:
   max_episodes: 3000
-  max_steps_per_episode: 150
-  save_every: 100
-  checkpoint_dir: "models/"
+  max_steps_per_episode: 200
+  save_every: 25
 
 reward:
   step_dist_penalty: -0.1
+  progress_reward_scale: 5.0
   heading_bonus: 0.5
   proximity_bonus: 2.0
+  close_bonus: 10.0
   terminal_reward: 100.0
   vision_penalty: -1.0
 
@@ -33,5 +34,5 @@ evader:
 
 drone:
   velocity_magnitude: 1.0
-  intercept_threshold: 0.5
-  boundary_radius: 12.0
+  intercept_threshold: 0.8
+  boundary_radius: 8.0

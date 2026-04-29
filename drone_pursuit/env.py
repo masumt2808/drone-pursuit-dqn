@@ -94,18 +94,46 @@ class PursuitEnv(Node):
     def compute_reward(self, prev_dist, curr_dist):
         rcfg = self.cfg['reward']
         dcfg = self.cfg['drone']
+
+        # Safety termination
+        if self.chaser_pos[2] < 1.0 or self.chaser_pos[2] > 6.0:
+            return -100.0, True
+
+        if np.linalg.norm(self.chaser_vel) > 4.0:
+            return -100.0, True
+
+        # Base distance penalty
         r = rcfg['step_dist_penalty'] * curr_dist
-        if self.vision_bit == 0:
+
+        # Main learning signal: reward moving closer
+        progress_scale = rcfg.get('progress_reward_scale', 5.0)
+        r += progress_scale * (prev_dist - curr_dist)
+
+        # Vision signal
+        if self.vision_bit == 1:
+            r += 2.0
+        else:
             r += rcfg['vision_penalty']
+
+        # Proximity shaping
         if curr_dist < 5.0:
             r += rcfg['heading_bonus']
+
         if curr_dist < 2.0:
             r += rcfg['proximity_bonus']
+
+        if curr_dist < 1.0:
+            r += rcfg.get('close_bonus', 10.0)
+
+        # Terminal success
         if curr_dist < dcfg['intercept_threshold']:
             return r + rcfg['terminal_reward'], True
+
+        # Boundary failure
         if curr_dist > dcfg['boundary_radius']:
             self.get_logger().warn('Boundary violated')
             return r - 50.0, True
+
         return r, False
 
     def publish_velocity(self, vel):

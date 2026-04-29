@@ -21,7 +21,7 @@ class HSVDetector:
     RED_UPPER1 = np.array([15,  255, 255])
     RED_LOWER2 = np.array([165,  40, 100])
     RED_UPPER2 = np.array([180, 255, 255])
-    PIXEL_THRESHOLD = 15
+    PIXEL_THRESHOLD = 22
 
     def detect(self, bgr_frame: np.ndarray) -> VisionState:
         hsv = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2HSV)
