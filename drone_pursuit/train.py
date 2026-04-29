@@ -128,7 +128,7 @@ def main(args=None):
 
     # Action space — position OFFSETS (not velocity)
     # Each action moves drone by STEP metres in one direction
-    STEP = 1.0  # metres per action
+    STEP = 0.5  # metres per action
     ACTION_OFFSETS = np.array([
         [ STEP, 0,     0    ],  # forward
         [-STEP, 0,     0    ],  # backward
@@ -177,6 +177,8 @@ def main(args=None):
         goto_position(*HOME, wait=4.0, tol=0.8)
         # 3. random evader position
         ex, ey, ez = reset_evader_random()
+        time.sleep(2.0)  # stabilization pause
+        env.stop()
 
         # current drone position as base for actions
         drone_pos = env.chaser_pos.copy()

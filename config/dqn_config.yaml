@@ -13,7 +13,7 @@ agent:
 
 training:
   max_episodes: 3000
-  max_steps_per_episode: 500
+  max_steps_per_episode: 150
   save_every: 100
   checkpoint_dir: "models/"
 
