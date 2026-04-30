@@ -182,3 +182,27 @@ Do not load an HSV checkpoint when running YOLO mode or vice versa — start fre
 | HSV  | 10        | Fast  | TBD            |
 | YOLO | 15        | ~Same | TBD            |
 
+
+---
+
+## Switching Between HSV and YOLO Perception
+
+In `config/dqn_config.yaml` change the perception mode:
+
+```yaml
+# HSV mode — binary vision_bit only — 10-D state — faster training
+perception:
+  mode: hsv
+
+# YOLO mode — bbox features (cx,cy,w,h,conf) — 15-D state — richer perception  
+perception:
+  mode: yolo
+```
+
+**Important:** HSV and YOLO use different state dimensions (10-D vs 15-D).
+Do not load an HSV checkpoint when running YOLO mode or vice versa — start fresh.
+
+| Mode | state_dim | Notes |
+|------|-----------|-------|
+| HSV  | 10        | Fast, binary detection |
+| YOLO | 15        | Spatial bbox features, richer state |
