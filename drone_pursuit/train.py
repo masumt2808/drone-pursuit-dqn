@@ -1,26 +1,32 @@
-import rclpy
-import yaml
-import time
-import os
-import numpy as np
-import subprocess
+"""
+Stable DQN training using POSITION setpoints.
+DQN outputs high-level position offsets; ArduPilot handles low-level stabilization.
+Supports HSV 10-D mode and YOLO bbox 15-D mode through config.
+"""
 
-from rclpy.executors import MultiThreadedExecutor
+import os
+import time
+import yaml
+import subprocess
 from threading import Thread
+
+import numpy as np
+import rclpy
+from rclpy.executors import MultiThreadedExecutor
 from torch.utils.tensorboard import SummaryWriter
 from geometry_msgs.msg import PoseStamped
 from std_srvs.srv import Trigger
 
 from drone_pursuit.env import PursuitEnv
 from drone_pursuit.dqn_agent import DQNAgent
-from drone_pursuit.perception import HSVDetector
+from drone_pursuit.perception import HSVDetector, YOLODetector
 
 
 def load_cfg():
-    p = os.path.expanduser(
+    path = os.path.expanduser(
         '~/drone_pursuit_ws/src/drone_pursuit/config/dqn_config.yaml'
     )
-    with open(p) as f:
+    with open(path) as f:
         return yaml.safe_load(f)
 
 
@@ -40,7 +46,15 @@ def main(args=None):
     cfg = load_cfg()
     print('[TRAIN] Config loaded', flush=True)
 
-    perception = HSVDetector()
+    mode = cfg.get('perception', {}).get('mode', 'hsv')
+
+    if mode == 'yolo':
+        perception = YOLODetector()
+        print('[TRAIN] Using YOLO detector', flush=True)
+    else:
+        perception = HSVDetector()
+        print('[TRAIN] Using HSV detector', flush=True)
+
     env = PursuitEnv(cfg, perception)
 
     executor = MultiThreadedExecutor()
@@ -66,8 +80,8 @@ def main(args=None):
         pos_pub.publish(msg)
 
     def goto_position(x, y, z, wait=4.0, tol=0.5):
-        t0 = time.time()
         target = np.array([x, y, z], dtype=np.float32)
+        t0 = time.time()
 
         while time.time() - t0 < wait:
             send_position(x, y, z)
@@ -82,56 +96,53 @@ def main(args=None):
     def ensure_flying(min_z=1.5):
         curr_z = env.chaser_pos[2]
 
-        if curr_z < min_z:
-            print(
-                f'[TRAIN] Drone too low (z={curr_z:.2f}) — rearming...',
-                flush=True
-            )
+        if curr_z >= min_z:
+            return True
 
-            subprocess.run(
-                [
-                    'ros2', 'service', 'call', '/mavros/set_mode',
-                    'mavros_msgs/srv/SetMode',
-                    '{base_mode: 0, custom_mode: GUIDED}'
-                ],
-                capture_output=True,
-                timeout=5
-            )
+        print(
+            f'[TRAIN] Drone too low (z={curr_z:.2f}) — rearming...',
+            flush=True
+        )
 
-            time.sleep(1)
+        subprocess.run(
+            [
+                'ros2', 'service', 'call', '/mavros/set_mode',
+                'mavros_msgs/srv/SetMode',
+                '{base_mode: 0, custom_mode: GUIDED}'
+            ],
+            capture_output=True,
+            timeout=5
+        )
 
-            subprocess.run(
-                [
-                    'ros2', 'service', 'call', '/mavros/cmd/arming',
-                    'mavros_msgs/srv/CommandBool',
-                    '{value: true}'
-                ],
-                capture_output=True,
-                timeout=5
-            )
+        time.sleep(1)
 
-            time.sleep(2)
+        subprocess.run(
+            [
+                'ros2', 'service', 'call', '/mavros/cmd/arming',
+                'mavros_msgs/srv/CommandBool',
+                '{value: true}'
+            ],
+            capture_output=True,
+            timeout=5
+        )
 
-            subprocess.run(
-                [
-                    'ros2', 'service', 'call', '/mavros/cmd/takeoff',
-                    'mavros_msgs/srv/CommandTOL',
-                    '{min_pitch: 0.0, yaw: 0.0, latitude: 0.0, longitude: 0.0, altitude: 3.0}'
-                ],
-                capture_output=True,
-                timeout=5
-            )
+        time.sleep(2)
 
-            time.sleep(8)
+        subprocess.run(
+            [
+                'ros2', 'service', 'call', '/mavros/cmd/takeoff',
+                'mavros_msgs/srv/CommandTOL',
+                '{min_pitch: 0.0, yaw: 0.0, latitude: 0.0, longitude: 0.0, altitude: 3.0}'
+            ],
+            capture_output=True,
+            timeout=5
+        )
 
-            print(
-                f'[TRAIN] Rearm done. z={env.chaser_pos[2]:.2f}',
-                flush=True
-            )
+        time.sleep(8)
 
-            return env.chaser_pos[2] > min_z
+        print(f'[TRAIN] Rearm done. z={env.chaser_pos[2]:.2f}', flush=True)
 
-        return True
+        return env.chaser_pos[2] > min_z
 
     def reset_evader_random():
         angle = np.random.uniform(0, 2 * np.pi)
@@ -168,9 +179,9 @@ def main(args=None):
             evader_reset_client.call_async(Trigger.Request())
 
         time.sleep(0.3)
+
         return x, y, z
 
-    # Action space: 6 discrete position offsets
     STEP = 0.5
 
     ACTION_OFFSETS = np.array(
@@ -217,13 +228,14 @@ def main(args=None):
     dcfg = cfg['drone']
 
     HOME = np.array([0.0, 0.0, 3.0], dtype=np.float32)
-    boundary = float(dcfg['boundary_radius'] - 0.5)
+
+    # Keep policy away from hard boundary.
+    boundary = float(dcfg['boundary_radius'] - 1.0)
 
     ep_rewards = []
     intercepts = 0
 
     for episode in range(tcfg['max_episodes']):
-
         ensure_flying()
 
         env.stop()
@@ -233,7 +245,7 @@ def main(args=None):
 
         ex, ey, ez = reset_evader_random()
 
-        # Let ArduPilot settle before RL actions begin
+        # Let Gazebo/ArduPilot/perception settle before learning step starts.
         time.sleep(3.0)
         env.stop()
 
@@ -258,10 +270,10 @@ def main(args=None):
 
             new_pos = drone_pos + offset
 
-            # Keep altitude safe
+            # Safe altitude range.
             new_pos[2] = float(np.clip(new_pos[2], 2.0, 5.0))
 
-            # Match config boundary instead of hardcoded +/-12
+            # XY clamp from config boundary.
             new_pos[0] = float(np.clip(new_pos[0], -boundary, boundary))
             new_pos[1] = float(np.clip(new_pos[1], -boundary, boundary))
 
@@ -294,11 +306,7 @@ def main(args=None):
         writer.add_scalar('reward/episode', ep_reward, episode)
         writer.add_scalar('reward/avg50', avg50, episode)
         writer.add_scalar('agent/epsilon', agent.epsilon, episode)
-        writer.add_scalar(
-            'training/intercept_rate',
-            intercepts / (episode + 1),
-            episode
-        )
+        writer.add_scalar('training/intercept_rate', intercepts / (episode + 1), episode)
         writer.add_scalar('training/final_distance', final_dist, episode)
 
         print(
@@ -323,5 +331,3 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
-
-
