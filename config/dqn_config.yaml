@@ -23,7 +23,7 @@ evader:
     slow: 0.5
     static: 0.0
 perception:
-  mode: yolo
+  mode: hsv
 reward:
   close_bonus: 10.0
   heading_bonus: 0.5

@@ -155,3 +155,30 @@ tensorboard --logdir runs/pursuit_dqn --port 6006
 - Panerati et al. (2021). Learning to Fly - a Gym Environment with PyBullet Physics for RL of Multi-agent Quadcopter Control. IROS 2021.
 - Mnih et al. (2015). Human-level control through deep reinforcement learning. Nature, 518, 529-533.
 - Bitcraze AB. (2024). Crazyflie Simulation. github.com/bitcraze/crazyflie-simulation.
+
+---
+
+## Switching Between HSV and YOLO Perception
+
+In `config/dqn_config.yaml`, change the perception mode:
+
+```yaml
+perception:
+  mode: hsv   # binary vision_bit only — 10-D state — faster training
+```
+
+or
+
+```yaml
+perception:
+  mode: yolo  # bbox features (cx,cy,w,h,conf) — 15-D state — richer perception
+```
+
+**Important:** HSV and YOLO use different state dimensions (10-D vs 15-D).
+Do not load an HSV checkpoint when running YOLO mode or vice versa — start fresh training.
+
+| Mode | state_dim | Speed | Intercept Rate |
+|------|-----------|-------|----------------|
+| HSV  | 10        | Fast  | TBD            |
+| YOLO | 15        | ~Same | TBD            |
+
