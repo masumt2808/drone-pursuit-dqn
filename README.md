@@ -1,50 +1,89 @@
 # Vision-Based Autonomous Drone Pursuit Using Deep Q-Networks
 
-**ENPM690 — Robot Learning | University of Maryland | Spring 2026**  
-**Authors:** Masum Gautam Thakkar | Swathi Sree Annambhotla
+**ENPM690 — Robot Learning | Spring 2026 | University of Maryland**
+
+Masum Gautam Thakkar (121229076) · Swathi Sree Annambhotla (122257627)
 
 ---
 
-## Overview
+## Results
 
-This project trains an Iris quadrotor (chaser) to autonomously intercept a red Crazyflie 2.x drone (evader) using a Deep Q-Network (DQN) in Gazebo Harmonic simulation. The chaser perceives the evader through a forward-facing RGB camera using HSV color detection and ground-truth odometry, learning a pursuit policy through reinforcement learning with 6 discrete position setpoint actions. Phase 1 achieved a 71.3% intercept rate over 150 training episodes, rising to 82% in the exploitation phase.
+| Difficulty | Speed | Intercept Rate | Avg Steps | Avg Reward |
+|-----------|-------|---------------|-----------|------------|
+| Static | 0.0 m/s | **100%** (20/20) | 78.2 | +940 |
+| Slow | 0.3 m/s | **95%** (19/20) | 98.3 | +1137 |
+| Fast | 0.5 m/s | **75%** (15/20) | 99.1 | +819 |
+
+---
+
+## Trained Model
+
+The checkpoint is included in this repo at `checkpoints/ep300.pt` (832KB).
+
+---
+
+## Repository Structure
+
+```
+drone-pursuit-dqn/
+├── drone_pursuit/
+│   ├── train.py          # DQN training loop
+│   ├── env.py            # ROS 2 environment node (state, reward)
+│   ├── dqn_agent.py      # Double DQN + Prioritized Experience Replay
+│   ├── perception.py     # HSV detector + YOLOv8n detector
+│   ├── evader_node.py    # Random-walk evader drone node
+│   └── evaluate.py       # 3-tier evaluation script
+├── config/
+│   └── dqn_config.yaml   # All hyperparameters
+├── worlds/
+│   └── pursuit_world.sdf # Gazebo world
+├── models/               # Iris + Crazyflie meshes
+├── checkpoints/
+│   └── ep300.pt          # Trained HSV policy (832KB)
+├── runs/                 # TensorBoard logs
+├── launch/sim.launch.py
+├── Dockerfile            # DQN code container
+└── README.md
+```
 
 ---
 
 ## System Requirements
 
-- ArduPilot SITL (ArduCopter V4.8.0), MAVROS2
-- PyTorch 2.5.1 + CUDA, OpenCV 4.13
+- Ubuntu 24.04
+- ROS 2 Jazzy
+- Gazebo Harmonic 8.11
+- ArduPilot SITL (ArduCopter V4.8.0)
+- MAVROS2
+- PyTorch 2.5.1 + CUDA
+- Python 3.12
 
 ---
 
-## Package Structure
+## Option 1 — Run Directly (Recommended)
 
-```
-drone_pursuit/
-├── config/dqn_config.yaml        # All hyperparameters
-├── drone_pursuit/
-│   ├── dqn_agent.py              # DQN + Prioritized Experience Replay
-│   ├── env.py                    # ROS2 pursuit environment node
-│   ├── evader_node.py            # Random-walk evader with gz set_pose
-│   ├── perception.py             # HSV detector + YOLOv8n detector
-│   ├── train.py                  # Training loop with position setpoints
-│   └── evaluate.py               # 3-tier evaluation script
-├── models/
-│   ├── iris_with_camera/         # Iris drone with forward RGB camera
-│   ├── crazyflie_red/            # Crazyflie 2.x real mesh model (red)
-│   └── meshes/                   # Collada mesh files
-└── worlds/pursuit_world.sdf      # Gazebo pursuit world
+### 1. Clone and build
+
+```bash
+cd ~/drone_pursuit_ws/src
+git clone https://github.com/masumt2808/drone-pursuit-dqn drone_pursuit
+cd ~/drone_pursuit_ws
+colcon build --packages-select drone_pursuit --symlink-install
+source install/setup.bash
 ```
 
----
+### 2. Install Python dependencies
 
-## Running the Simulation
+```bash
+pip3 install torch numpy==1.26.4 opencv-python ultralytics tensorboard pyyaml --break-system-packages
+```
+
+### 3. Start simulation (6 terminals)
 
 **Terminal 1 — Gazebo:**
 ```bash
 source /opt/ros/jazzy/setup.bash
-gz sim -r worlds/pursuit_world.sdf
+gz sim -r ~/drone_pursuit_ws/src/drone_pursuit/worlds/pursuit_world.sdf
 ```
 
 **Terminal 2 — ArduPilot SITL:**
@@ -52,10 +91,9 @@ gz sim -r worlds/pursuit_world.sdf
 cd ~/ardupilot
 sim_vehicle.py -v ArduCopter --model=JSON \
   --add-param-file=Tools/autotest/default_params/gazebo-iris.parm \
-  --add-param-file=Tools/autotest/default_params/sitl_custom.parm \
   --console --map
 ```
-Then in MAVProxy console: `output add 127.0.0.1:14551`
+In MAVProxy console type: `output add 127.0.0.1:14551`
 
 **Terminal 3 — MAVROS:**
 ```bash
@@ -75,11 +113,13 @@ ros2 service call /mavros/cmd/arming mavros_msgs/srv/CommandBool "{value: true}"
 sleep 2
 ros2 service call /mavros/cmd/takeoff mavros_msgs/srv/CommandTOL \
   "{min_pitch: 0.0, yaw: 0.0, latitude: 0.0, longitude: 0.0, altitude: 3.0}"
+sleep 6
 ```
 
-**Terminal 5 — Camera Bridge and Evader:**
+**Terminal 5 — Camera Bridge + Evader:**
 ```bash
-source /opt/ros/jazzy/setup.bash && source install/setup.bash
+source /opt/ros/jazzy/setup.bash
+source ~/drone_pursuit_ws/install/setup.bash
 ros2 run ros_gz_bridge parameter_bridge \
   /iris/camera/image_raw@sensor_msgs/msg/Image@gz.msgs.Image &
 sleep 2
@@ -88,121 +128,124 @@ ros2 run drone_pursuit evader_node \
   -p start_y:=0.0 -p start_z:=3.0 -p use_gazebo:=True
 ```
 
-**Terminal 6 — Training:**
+**Terminal 6 — Evaluate trained policy:**
 ```bash
-source /opt/ros/jazzy/setup.bash && source install/setup.bash
+source /opt/ros/jazzy/setup.bash
+source ~/drone_pursuit_ws/install/setup.bash
+python3 -u ~/drone_pursuit_ws/src/drone_pursuit/drone_pursuit/evaluate.py \
+  --checkpoint ~/drone_pursuit_ws/src/drone_pursuit/checkpoints/ep300.pt \
+  --difficulty static
+```
 
-# Fresh training
-PYTHONUNBUFFERED=1 python3 -u drone_pursuit/train.py
-
-# Resume from checkpoint
-PYTHONUNBUFFERED=1 python3 -u drone_pursuit/train.py --checkpoint models/ep100.pt
-
-# TensorBoard
-tensorboard --logdir runs/pursuit_dqn --port 6006
+**Or train from scratch:**
+```bash
+python3 -u ~/drone_pursuit_ws/src/drone_pursuit/drone_pursuit/train.py
 ```
 
 ---
 
-## Architecture
+## Option 2 — Docker (DQN Code Container)
 
-**State Vector (10-D)**
+The Dockerfile containerizes the DQN training and evaluation code.
+Gazebo, ArduPilot SITL, and MAVROS must run on the host machine first (Terminals 1-5 above).
+The container connects to host ROS 2 topics via `--network host`.
 
-| Index | Feature | Source |
-|-------|---------|--------|
-| 0-2 | rel_x, rel_y, rel_z | /evader/odom |
-| 3-5 | vel_x, vel_y, vel_z | /mavros/local_position/odom |
-| 6 | distance | Euclidean to evader |
-| 7 | heading_err | Yaw error toward evader |
-| 8 | alt_err | Altitude difference |
-| 9 | vision_bit | HSV detection (0 or 1) |
+### Build
 
-**DQN:** 3-layer MLP (10-256-256-6) with ReLU, Prioritized Experience Replay, target network sync every 500 steps, CUDA accelerated.
+```bash
+docker build -t drone-pursuit-dqn .
+```
 
-**Actions:** 6 discrete position offsets of +/-1.5m in x, y, z directions.
+### Evaluate (start Terminals 1-5 on host first, then run this)
 
-**Reward:** Distance shaping (+10 per meter closed) + vision bonus (+5) + intercept (+200) + boundary penalty (-200) + step penalty (-0.5).
+```bash
+docker run --rm --network host \
+  -v ~/drone_pursuit_ws/src/drone_pursuit/checkpoints:/checkpoints:ro \
+  drone-pursuit-dqn eval \
+  --checkpoint /checkpoints/ep300.pt \
+  --difficulty static
+```
+
+### Run all difficulties
+
+```bash
+docker run --rm --network host \
+  -v ~/drone_pursuit_ws/src/drone_pursuit/checkpoints:/checkpoints:ro \
+  drone-pursuit-dqn eval \
+  --checkpoint /checkpoints/ep300.pt \
+  --difficulty all
+```
+
+### Train from scratch
+
+```bash
+docker run --rm --network host --gpus all \
+  -v ~/drone_pursuit_ws/models:/checkpoints \
+  -v ~/drone_pursuit_ws/runs:/runs \
+  drone-pursuit-dqn train
+```
+
+### TensorBoard
+
+```bash
+docker run --rm --network host \
+  -v ~/drone_pursuit_ws/runs:/runs:ro \
+  drone-pursuit-dqn tensorboard
+```
+Open `http://localhost:6006`
+
+### Interactive shell
+
+```bash
+docker run --rm -it --network host drone-pursuit-dqn bash
+```
 
 ---
 
-## Results
+## TensorBoard
 
-| Metric | Value |
-|--------|-------|
-| Episodes completed | 150 |
-| Total intercepts | 107 / 150 |
-| Overall intercept rate | 71.3% |
-| Early rate (ep 1-50) | ~40% |
-| Late rate (ep 51-150) | ~82% |
-| Peak avg50 reward | +192 |
-| Final epsilon | 0.050 |
+```bash
+tensorboard --logdir ~/drone_pursuit_ws/runs --port 6006
+```
+Open `http://localhost:6006` — the `runs/` folder in this repo contains all training logs.
 
 ---
 
-## Phase 2 Plan
+## Switching Perception Mode
 
-- Option B: YOLOv8n spatial detector replacing HSV (14-D state vector)
-- Extended training using gym-pybullet-drones for faster iteration
-- 3-tier evaluation across static, slow (0.3 m/s), and fast (0.7 m/s) evader
-- Comparison between Option A (HSV) and Option B (YOLOv8n)
-- Final report with full results and analysis
+In `config/dqn_config.yaml`:
+
+```yaml
+perception:
+  mode: hsv    # 10-D state — fully trained (100%/95%/75%)
+  # mode: yolo # 15-D state — spatial bbox features, still converging
+```
+
+> Do not load an HSV checkpoint when running YOLO mode — state dimensions differ (10 vs 15).
+
+---
+
+## Key Hyperparameters
+
+| Parameter | Value |
+|-----------|-------|
+| State dim | 10-D (HSV) / 15-D (YOLO) |
+| Actions | 6 discrete (±0.5m in x, y, z) |
+| Network | MLP 10→256→256→6, ReLU |
+| Learning rate | 0.0005 |
+| Gamma | 0.99 |
+| Epsilon decay | 0.9998 per step |
+| Batch size | 64 |
+| Replay buffer | 50,000 (Prioritized) |
+| Target sync | Every 500 steps |
+| Intercept threshold | 1.0m |
 
 ---
 
 ## References
 
-- Chen et al. (2025). Online Planning for Multi-UAV Pursuit-Evasion in Unknown Environments Using Deep Reinforcement Learning. arXiv:2409.15866.
-- Panerati et al. (2021). Learning to Fly - a Gym Environment with PyBullet Physics for RL of Multi-agent Quadcopter Control. IROS 2021.
-- Mnih et al. (2015). Human-level control through deep reinforcement learning. Nature, 518, 529-533.
-- Bitcraze AB. (2024). Crazyflie Simulation. github.com/bitcraze/crazyflie-simulation.
-
----
-
-## Switching Between HSV and YOLO Perception
-
-In `config/dqn_config.yaml`, change the perception mode:
-
-```yaml
-perception:
-  mode: hsv   # binary vision_bit only — 10-D state — faster training
-```
-
-or
-
-```yaml
-perception:
-  mode: yolo  # bbox features (cx,cy,w,h,conf) — 15-D state — richer perception
-```
-
-**Important:** HSV and YOLO use different state dimensions (10-D vs 15-D).
-Do not load an HSV checkpoint when running YOLO mode or vice versa — start fresh training.
-
-| Mode | state_dim | Speed | Intercept Rate |
-|------|-----------|-------|----------------|
-| HSV  | 10        | Fast  | TBD            |
-| YOLO | 15        | ~Same | TBD            |
-
-
----
-
-## Switching Between HSV and YOLO Perception
-
-In `config/dqn_config.yaml` change the perception mode:
-
-```yaml
-# HSV mode — binary vision_bit only — 10-D state — faster training
-perception:
-  mode: hsv
-
-# YOLO mode — bbox features (cx,cy,w,h,conf) — 15-D state — richer perception  
-perception:
-  mode: yolo
-```
-
-**Important:** HSV and YOLO use different state dimensions (10-D vs 15-D).
-Do not load an HSV checkpoint when running YOLO mode or vice versa — start fresh.
-
-| Mode | state_dim | Notes |
-|------|-----------|-------|
-| HSV  | 10        | Fast, binary detection |
-| YOLO | 15        | Spatial bbox features, richer state |
+- Mnih et al. (2015). Human-level control through deep reinforcement learning. Nature, 518.
+- van Hasselt et al. (2016). Deep Reinforcement Learning with Double Q-learning. AAAI.
+- Panerati et al. (2021). Learning to Fly — PyBullet Physics for RL. IROS.
+- Chen et al. (2024). Online Planning for Multi-UAV Pursuit-Evasion. arXiv:2409.15866.
+- Bitcraze AB (2024). Crazyflie Simulation. github.com/bitcraze/crazyflie-simulation.
