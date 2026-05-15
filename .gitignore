@@ -5,3 +5,6 @@ __pycache__/
 Dockerfile
 docker/
 scripts/
+# ignore all checkpoints except ep300
+checkpoints/*.pt
+!checkpoints/ep300.pt
