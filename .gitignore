@@ -1,10 +1,8 @@
 __pycache__/
 *.pyc
 *.pyo
-.dockerignore
-Dockerfile
-docker/
-scripts/
-# ignore all checkpoints except ep300
 checkpoints/*.pt
 !checkpoints/ep300.pt
+build/
+install/
+log/

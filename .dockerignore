@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+.git
+build/
+install/
+log/
+runs/
+checkpoints/*.pt
+!checkpoints/ep300.pt
+.vscode/
+.DS_Store
