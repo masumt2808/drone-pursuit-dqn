@@ -1,0 +1,155 @@
+x-common: &common
+  image: drone-pursuit-dqn-full
+  network_mode: host
+  environment:
+    ROS_DOMAIN_ID: "0"
+    RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+    GZ_SIM_RESOURCE_PATH: "/usr/local/share/ardupilot_gazebo/models:/drone_ws/src/drone_pursuit/models"
+    GZ_SIM_SYSTEM_PLUGIN_PATH: "/usr/local/lib/ardupilot_gazebo"
+
+services:
+
+  gazebo:
+    <<: *common
+    container_name: dqn_gazebo
+    environment:
+      ROS_DOMAIN_ID: "0"
+    RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+      GZ_SIM_RESOURCE_PATH: "/usr/local/share/ardupilot_gazebo/models:/drone_ws/src/drone_pursuit/models"
+      GZ_SIM_SYSTEM_PLUGIN_PATH: "/usr/local/lib/ardupilot_gazebo"
+      DISPLAY: "${DISPLAY}"
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    entrypoint: bash
+    command:
+      - -c
+      - |
+        source /opt/ros/jazzy/setup.bash
+        export PATH=/opt/ros/jazzy/opt/gz_tools_vendor/bin:$$PATH
+        gz sim -r /drone_ws/src/drone_pursuit/worlds/pursuit_world.sdf
+
+  ardupilot:
+    <<: *common
+    container_name: dqn_ardupilot
+    entrypoint: bash
+    command:
+      - -c
+      - |
+        sleep 8
+        cd /ardupilot
+        /ardupilot/build/sitl/bin/arducopter \
+          --model JSON \
+          --speedup 1 \
+          --slave 0 \
+          --defaults Tools/autotest/default_params/copter.parm,Tools/autotest/default_params/gazebo-iris.parm \
+          --sim-address=127.0.0.1 \
+          -I0 &
+        sleep 5
+        mavproxy.py \
+          --non-interactive \
+          --retries 5 \
+          --out 127.0.0.1:14550 \
+          --out 127.0.0.1:14551 \
+          --master tcp:127.0.0.1:5760 \
+          --sitl 127.0.0.1:5501 \
+          --cmd "param set DISARM_DELAY 0; param set FS_THR_ENABLE 0; param set ARMING_CHECK 0"
+    depends_on:
+      - gazebo
+
+  mavros:
+    <<: *common
+    container_name: dqn_mavros
+    entrypoint: bash
+    command:
+      - -c
+      - |
+        source /opt/ros/jazzy/setup.bash
+        source /drone_ws/install/setup.bash
+        sleep 20
+        ros2 run mavros mavros_node --ros-args \
+          -p fcu_url:=udp://127.0.0.1:14551@14555 \
+          -p tgt_system:=1 -p tgt_component:=1 -p system_id:=255
+    depends_on:
+      - ardupilot
+
+  arm:
+    <<: *common
+    container_name: dqn_arm
+    entrypoint: bash
+    command:
+      - -c
+      - |
+        source /opt/ros/jazzy/setup.bash
+        source /drone_ws/install/setup.bash
+        sleep 35
+        ros2 service call /mavros/set_mode mavros_msgs/srv/SetMode \
+          '{base_mode: 0, custom_mode: GUIDED}'
+        sleep 3
+        ros2 service call /mavros/cmd/arming \
+          mavros_msgs/srv/CommandBool '{value: true}'
+        sleep 5
+        ros2 service call /mavros/cmd/takeoff \
+          mavros_msgs/srv/CommandTOL \
+          '{min_pitch: 0.0, yaw: 0.0, latitude: 0.0, longitude: 0.0, altitude: 3.0}'
+        sleep 8
+        echo "Takeoff done!"
+    depends_on:
+      - mavros
+    restart: "no"
+
+  evader:
+    <<: *common
+    container_name: dqn_evader
+    entrypoint: bash
+    command:
+      - -c
+      - |
+        source /opt/ros/jazzy/setup.bash
+        source /drone_ws/install/setup.bash
+        sleep 55
+        ros2 run ros_gz_bridge parameter_bridge \
+          /iris/camera/image_raw@sensor_msgs/msg/Image@gz.msgs.Image &
+        sleep 3
+        ros2 run drone_pursuit evader_node --ros-args \
+          -p speed:=0.5 -p start_x:=3.0 \
+          -p start_y:=0.0 -p start_z:=3.0 \
+          -p use_gazebo:=True
+    depends_on:
+      - gazebo
+      - mavros
+
+  eval:
+    <<: *common
+    container_name: dqn_eval
+    volumes:
+      - ${HOME}/drone_pursuit_ws/models:/checkpoints:ro
+      - ${HOME}/drone_pursuit_ws/runs:/runs
+    entrypoint: bash
+    command:
+      - -c
+      - |
+        source /opt/ros/jazzy/setup.bash
+        source /drone_ws/install/setup.bash
+        sleep 70
+        python3 -u /drone_ws/src/drone_pursuit/drone_pursuit/evaluate.py \
+          --checkpoint /checkpoints/ep300.pt --difficulty static
+    depends_on:
+      - evader
+
+  train:
+    <<: *common
+    container_name: dqn_train
+    volumes:
+      - ${HOME}/drone_pursuit_ws/models:/checkpoints
+      - ${HOME}/drone_pursuit_ws/runs:/runs
+    entrypoint: bash
+    command:
+      - -c
+      - |
+        source /opt/ros/jazzy/setup.bash
+        source /drone_ws/install/setup.bash
+        sleep 70
+        python3 -u /drone_ws/src/drone_pursuit/drone_pursuit/train.py
+    depends_on:
+      - evader
+    profiles: ["train"]

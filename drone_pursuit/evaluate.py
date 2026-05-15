@@ -114,7 +114,7 @@ def main():
     t0 = time.time()
     while not env.is_ready():
         time.sleep(0.1)
-        if time.time() - t0 > 30:
+        if time.time() - t0 > 60:
             print('[EVAL] Timeout waiting for drone')
             rclpy.shutdown()
             return

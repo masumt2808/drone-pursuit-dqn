@@ -22,7 +22,7 @@
       <visual name="body_visual">
         <geometry>
           <mesh>
-            <uri>/home/masum/drone_pursuit_ws/src/drone_pursuit/models/meshes/collada_files/cf2_assembly.dae</uri>
+            <uri>../meshes/collada_files/cf2_assembly.dae</uri>
             <scale>1 1 1</scale>
           </mesh>
         </geometry>
@@ -37,7 +37,7 @@
         <pose>0.031 -0.031 0.021 0 0 0</pose>
         <geometry>
           <mesh>
-            <uri>/home/masum/drone_pursuit_ws/src/drone_pursuit/models/meshes/collada_files/ccw_prop.dae</uri>
+            <uri>../meshes/collada_files/ccw_prop.dae</uri>
           </mesh>
         </geometry>
         <material>
@@ -50,7 +50,7 @@
         <pose>0.031 0.031 0.021 0 0 0</pose>
         <geometry>
           <mesh>
-            <uri>/home/masum/drone_pursuit_ws/src/drone_pursuit/models/meshes/collada_files/cw_prop.dae</uri>
+            <uri>../meshes/collada_files/cw_prop.dae</uri>
           </mesh>
         </geometry>
         <material>
@@ -63,7 +63,7 @@
         <pose>-0.031 0.031 0.021 0 0 0</pose>
         <geometry>
           <mesh>
-            <uri>/home/masum/drone_pursuit_ws/src/drone_pursuit/models/meshes/collada_files/ccw_prop.dae</uri>
+            <uri>../meshes/collada_files/ccw_prop.dae</uri>
           </mesh>
         </geometry>
         <material>
@@ -76,7 +76,7 @@
         <pose>-0.031 -0.031 0.021 0 0 0</pose>
         <geometry>
           <mesh>
-            <uri>/home/masum/drone_pursuit_ws/src/drone_pursuit/models/meshes/collada_files/cw_prop.dae</uri>
+            <uri>../meshes/collada_files/cw_prop.dae</uri>
           </mesh>
         </geometry>
         <material>
